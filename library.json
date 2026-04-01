@@ -1,0 +1,22 @@
+{
+  "aptitude": {
+    "topics": ["Time and Work", "Profit and Loss", "Percentage"],
+    "sample_questions": [
+      "If A can do a work in 10 days and B in 15 days, how long will they take together?",
+      "A shopkeeper sells an item at 20% profit. If the cost price is 500, what is the selling price?"
+    ],
+    "logic_style": "Ask one numerical problem, wait for the calculation, and then explain the shortcut if the user is slow."
+  },
+  "verbal_ability": {
+    "topics": ["Sentence Correction", "Synonyms", "Reading Comprehension"],
+    "sample_questions": [
+      "Identify the error: 'He do not has any money.'",
+      "What is the synonym of the word 'Diligent'?"
+    ],
+    "logic_style": "Focus on grammatical accuracy and professional vocabulary."
+  },
+  "dsa_java": {
+    "topics": ["Linked Lists", "JVM Memory", "Garbage Collection"],
+    "logic_style": "Focus on the AKTU B.Tech syllabus. Ask about time complexity for every solution provided."
+  }
+}
