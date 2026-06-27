@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Interviewer | Live Session</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: white; margin: 0; display: flex; flex-direction: column; align-items: center; height: 100vh; }
+        h1 { margin: 20px 0; font-weight: 300; color: #00d4ff; }
+
+        /* 1. LOBBY SCREEN */
+        #setup-screen { background: #1a1a1a; padding: 30px; border-radius: 15px; border: 1px solid #333; width: 350px; text-align: center; margin-top: 50px; }
+        select, button { width: 100%; padding: 12px; margin-top: 15px; border-radius: 8px; border: none; font-weight: bold; }
+        select { background: #252525; color: white; border: 1px solid #444; }
+        .btn-start { background: #00d4ff; color: #000; cursor: pointer; font-size: 1rem; }
+
+        /* 2. INTERVIEW ROOM (The "Zoom" Layout) */
+        #interview-room { display: none; width: 95%; max-width: 1300px; height: 80vh; gap: 20px; padding: 10px; }
+        
+        /* LEFT: THE AI HR AVATAR */
+        .avatar-box { flex: 2; background: #111; border-radius: 15px; border: 1px solid #333; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #hr-image { width: 100%; height: 100%; object-fit: cover; }
+        .avatar-label { position: absolute; top: 15px; left: 15px; background: rgba(0,212,255,0.2); padding: 5px 12px; border-radius: 5px; color: #00d4ff; font-size: 0.8rem; }
+
+        /* RIGHT: USER CAMERA + CHAT */
+        .sidebar { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        .user-video-box { height: 200px; background: #111; border-radius: 15px; border: 1px solid #333; overflow: hidden; position: relative; }
+        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        
+        .chat-box { flex: 1; background: #1a1a1a; border-radius: 15px; border: 1px solid #333; display: flex; flex-direction: column; overflow: hidden; }
+        #transcript { flex: 1; padding: 15px; overflow-y: auto; font-size: 0.95rem; line-height: 1.4; color: #ccc; }
+        .controls { padding: 15px; background: #111; text-align: center; }
+        #micBtn { background: #ff4b2b; color: white; width: 100%; padding: 15px; border-radius: 10px; cursor: pointer; }
+        #micBtn:disabled { background: #444; cursor: not-allowed; }
+
+        .alex-msg { color: #00d4ff; margin-bottom: 10px; }
+        .user-msg { color: #fff; margin-bottom: 10px; text-align: right; font-style: italic; opacity: 0.7; }
+
+        .ai-core-neutral {
+    width: 150px; height: 150px; background: radial-gradient(circle, #00d4ff 0%, #000 70%);
+    border-radius: 50%; box-shadow: 0 0 30px #00d4ff; animation: pulse 2s infinite;
+}
+.ai-core-talking {
+    width: 160px; height: 160px; background: radial-gradient(circle, #ffffff 0%, #00d4ff 70%);
+    border-radius: 50%; box-shadow: 0 0 50px #fff; animation: jitter 0.2s infinite;
+}
+.ai-core-thinking {
+    width: 150px; height: 150px; background: radial-gradient(circle, #ffaa00 0%, #000 70%);
+    border-radius: 50%; box-shadow: 0 0 30px #ffaa00; animation: spin 1s infinite linear;
+}
+
+@keyframes pulse { 0% { transform: scale(0.95); opacity: 0.8; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.8; } }
+@keyframes jitter { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -2px); } 100% { transform: translate(1px, 1px); } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <h1>AI INTERVIEWER <span style="font-weight: bold;">ALEX</span></h1>
+
+    <div id="setup-screen">
+        <h3>Join Interview Room</h3>
+        <select id="niche-select">
+            <option value="verbal_ability">Verbal Ability (10m)</option>
+            <option value="aptitude">Quantitative Aptitude (15m)</option>
+            <option value="dsa_java">DSA & Java Round (30m)</option>
+            <option value="hr">General HR Round (20m)</option>
+        </select>
+        <select id="vibe-select">
+            <option value="professional">Professional HR</option>
+            <option value="strict">Strict Specialist</option>
+        </select>
+        <button class="btn-start" onclick="launchSession()">ENTER LIVE CALL</button>
+    </div>
+
+    <div id="countdown-screen" style="display: none; text-align: center; margin-top: 100px;">
+    <h1 style="font-size: 4rem; color: #ff4b2b;" id="timer-number">5</h1>
+    <p style="letter-spacing: 3px; color: #aaa;">INITIALIZING ENVIRONMENT...</p>
+    </div>
+    
+    <div id="countdown-screen" style="display: none; text-align: center; margin-top: 100px;">
+    <h1 style="font-size: 5rem; color: #00d4ff;" id="timer-number">5</h1>
+    <p style="letter-spacing: 5px; color: #888;">GET READY...</p>
+    </div>
+
+    <div id="session-timer" style="position:absolute; top:20px; right:20px; font-size:1.5rem; color:#ff4b2b; font-family:monospace;">10:00</div>
+
+    <div id="interview-room">
+        <div class="avatar-box">
+    <div class="avatar-label">INTERVIEWER: ALEX</div>
+    <div id="ai-core" class="ai-core-neutral"></div>
+    <div id="ai-status-text" style="position: absolute; bottom: 40px; color: #00d4ff; font-weight: bold; letter-spacing: 2px;">LISTENING...</div>
+</div>
+<button onclick="endSession()" style="position:absolute; bottom:20px; right:20px; background:transparent; color:#444; border:1px solid #444; padding:5px 10px; border-radius:5px; cursor:pointer;">
+    Quit Session
+</button>
+
+        <div class="sidebar">
+            <div class="user-video-box">
+                <video id="webcam" autoplay playsinline muted></video>
+                <div style="position: absolute; bottom: 10px; left: 10px; font-size: 0.7rem; color: #ff4b2b;">● LIVE</div>
+            </div>
+            <!-- Move this block right below your PUSH TO TALK button container in the sidebar -->
+<div style="text-align: center; margin-top: 15px;">
+    <button onclick="endSession()" style="background: #222; color: #ff4b2b; border: 1px solid #ff4b2b; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; width: 100%;">
+        🚫 Quit Session
+    </button>
+</div>
+            <div class="chat-box">
+                <div id="transcript"></div>
+                <div class="controls">
+                    <button id="micBtn" onclick="toggleMic()" disabled>PUSH TO TALK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null; // Saves our persistence key
+        let countdownInterval = null; // <-- Holds the background thread ID
+        let chatHistory = []; // Stores the full transcript for evaluation
+      const transcriptDiv = document.getElementById('transcript');
+const micBtn = document.getElementById('micBtn');
+const setupScreen = document.getElementById('setup-screen');
+const countdownScreen = document.getElementById('countdown-screen');
+const interviewRoom = document.getElementById('interview-room');
+const timerText = document.getElementById('timer-number');
+let recognition;
+
+// 1. THE MESSAGE LOGGER AND REMEMBER YOUR MESSAGE
+function addMessage(text, className) {
+    const p = document.createElement('p');
+    p.className = className;
+    p.innerText = text;
+    transcriptDiv.appendChild(p);
+    transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+
+    // Save to history: { role: 'user' or 'alex', content: '...' }
+    const role = className === 'user-msg' ? 'User' : 'Alex';
+    chatHistory.push(`${role}: ${text}`);
+}
+
+// 2. THE VOICE ENGINE (With Interruption Support)
+function alexSpeak(text) {
+    addMessage("Alex: " + text, 'alex-msg');
+    setAvatarState('talking');
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => setAvatarState('neutral');
+    window.speechSynthesis.speak(utterance);
+}
+
+// 3. LAUNCH & COUNTDOWN
+function launchSession() {
+    setupScreen.style.display = 'none';
+    countdownScreen.style.display = 'block';
+
+    let count = 5;
+    timerText.innerText = count;
+
+    const interval = setInterval(() => {
+        count--;
+        timerText.innerText = count;
+        if (count <= 0) {
+            clearInterval(interval);
+            countdownScreen.style.display = 'none';
+            interviewRoom.style.display = 'flex';
+            // CALL THE BRIDGE
+            initializeInterview();
+        }
+    }, 1000);
+}
+
+// 4. THE BRIDGE (Starts the actual session)
+async function initializeInterview() {
+    const niche = document.getElementById('niche-select').value;
+    const vibe = document.getElementById('vibe-select').value;
+    const userName = "Aryan"; // Hardcoded for your presentation check
+
+    addMessage("System: Initializing Alex for " + niche + "...", 'alex-msg');
+    setAvatarState('thinking');
+
+    try {
+        const res = await fetch('/start', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ niche, vibe, userName }) 
+        });
+        
+        const data = await res.json();
+        
+        if (data.reply) {
+            // 1. SAVE THE SESSION ID IN PERSISTENCE LAYER
+            currentSessionId = data.session_id; 
+            
+            // 2. Start the conversation and timer
+            alexSpeak(data.reply);
+            micBtn.disabled = false;
+            startTimer(10); 
+        } else {
+            addMessage("System Error: Alex is unavailable.", 'alex-msg');
+        }
+    } catch (err) {
+        addMessage("Connection Error: Check if server.py is running.", 'alex-msg');
+    }
+}function startTimer(durationInMinutes) {
+    // Clear any residual ghost intervals before starting a fresh clock
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    let timeRemaining = durationInMinutes * 60;
+    const timerDisplay = document.getElementById('timer'); // Or whatever your element ID is
+
+    countdownInterval = setInterval(() => {
+        let minutes = Math.floor(timeRemaining / 60);
+        let seconds = timeRemaining % 60;
+
+        // Zero-padding formatting
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        seconds = seconds < 10 ? '0' + seconds : seconds;
+
+        if (timerDisplay) {
+            timerDisplay.textContent = `${minutes}:${seconds}`;
+        }
+
+        if (--timeRemaining < 0) {
+            clearInterval(countdownInterval);
+            endSession(); // Auto-terminate if time runs out
+        }
+    }, 1000);
+}
+// 5. CHAT & TERMINATION COMMANDS
+async function sendToAlex(text) {
+    setAvatarState('thinking');
+    addMessage("System: Processing your response...", 'alex-msg'); // Temporary indicator
+
+    try {
+        const res = await fetch('/chat', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            // Make sure keys match exactly what server.py expects!
+            body: JSON.stringify({ 
+                text: text, 
+                session_id: currentSessionId 
+            }) 
+        });
+
+        if (!res.ok) throw new Error("Chat routing failed");
+        const data = await res.json();
+        
+        if (data.reply) {
+            alexSpeak(data.reply);
+        } else {
+            addMessage("Alex: (Silent nod... please continue or try again)", 'alex-msg');
+        }
+    } catch (err) {
+        console.error("Chat Error:", err);
+        addMessage("Connection Error: Could not reach Alex. Check terminal logs.", 'alex-msg');
+    }
+}
+
+if ('webkitSpeechRecognition' in window) {
+    recognition = new webkitSpeechRecognition();
+    // Ensure it doesn't keep listening forever mid-sentence
+    recognition.continuous = false; 
+    recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+        const text = event.results[0][0].transcript;
+        console.log("User said: ", text); // Debug log to your browser console (F12)
+        
+        // Check for quit commands
+        const quitCommands = ["end interview", "stop the session", "terminate", "finish interview"];
+        if (quitCommands.some(cmd => text.toLowerCase().includes(cmd))) {
+            endSession();
+            return;
+        }
+
+        // Add user message to UI
+        addMessage(text, 'user-msg');
+        
+        // 🚀 FIRE TO BACKEND
+        sendToAlex(text);
+    };
+
+    recognition.onerror = (event) => {
+        console.error("Speech Recognition Error: ", event.error);
+        addMessage("System: Speech recognition error (" + event.error + "). Try clicking Push To Talk again.", "alex-msg");
+    };
+}
+
+function toggleMic() {
+    // Kill switch: Stop Alex's speech synthesis immediately if you interrupt him
+    window.speechSynthesis.cancel();
+    setAvatarState('neutral');
+    
+    // Fire up the microphone listener
+    if (recognition) {
+        try {
+            recognition.start();
+            addMessage("...Listening...", 'user-msg');
+        } catch (e) {
+            console.log("Recognition already running or initialization failed: ", e);
+        }
+    } else {
+        addMessage("System Error: Speech recognition engine not initialized in this browser.", "alex-msg");
+    }
+}
+
+async function endSession() {
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+    }
+    window.speechSynthesis.cancel();
+    
+    const currentVibe = document.getElementById('vibe-select')?.value || 'professional';
+    
+    // Smooth transition message
+    interviewRoom.innerHTML = `
+        <div style="text-align:center; width:100%; margin-top:50px;">
+            <h2 style="color:#00d4ff;" class="loading-text">Alex is calculating your results...</h2>
+            <p style="color:#666;">Analyzing transcript matrices</p>
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                history: chatHistory,
+                vibe: currentVibe 
+            })
+        });
+        
+        if (!res.ok) throw new Error("Server evaluation failed");
+        const report = await res.json();
+        
+        // Render Scorecard safely
+        renderScorecard(report);
+
+    } catch (err) {
+        console.error("Scorecard Crash Caught:", err);
+        // Fallback display so the student is never left with a frozen screen
+        renderScorecard({
+            score: "70",
+            communication: "7",
+            technical: "6",
+            feedback: "Interview terminated early or connection timed out. Review your terminal console for errors."
+        });
+    }
+}
+
+// Clean helper function to draw the card
+function renderScorecard(report) {
+    interviewRoom.innerHTML = `
+        <div style="background:#1a1a1a; padding:40px; border-radius:15px; border:2px solid #00d4ff; text-align:center; width:100%; max-width:600px; margin:auto; box-shadow: 0px 0px 20px rgba(0,212,255,0.2);">
+            <h2 style="color:#00d4ff; letter-spacing:2px; margin-bottom:5px;">INTERVIEW SCORECARD</h2>
+            <div style="font-size:4rem; font-weight:bold; color:#fff; margin:20px 0;">${report.score}%</div>
+            
+            <div style="display:flex; justify-content:space-around; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:20px;">
+                <div><p style="color:#888; margin:0;">Communication</p><h3 style="color:#00d4ff; margin:5px 0;">${report.communication}/10</h3></div>
+                <div><p style="color:#888; margin:0;">Technical</p><h3 style="color:#00d4ff; margin:5px 0;">${report.technical}/10</h3></div>
+            </div>
+
+            <p style="font-style:italic; color:#aaa; padding:10px 0;">"${report.feedback}"</p>
+            
+            <button onclick="location.reload()" style="margin-top:20px; background:#ff4b2b; color:white; padding:12px 30px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; width:100%;">RETURN TO LOBBY</button>
+        </div>
+    `;
+}
+// Ensure the Orb/Avatar functions exist
+function setAvatarState(state) {
+    const core = document.getElementById('ai-core');
+    if (!core) return;
+    if (state === 'talking') core.className = 'ai-core-talking';
+    else if (state === 'thinking') core.className = 'ai-core-thinking';
+    else core.className = 'ai-core-neutral';
+}
+    </script>
+</body>
+</html>
