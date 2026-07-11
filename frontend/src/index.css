@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes scanline {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(100%); }
+}
+.animate-scanline {
+  animation: scanline 4s linear infinite;
+}

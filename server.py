@@ -4,17 +4,60 @@ import json
 import uuid
 import uvicorn
 from fastapi import FastAPI, Request
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from groq import Groq
 from dotenv import load_dotenv
-
+from fastapi.middleware.cors import CORSMiddleware
 # 1. SECURE ENVIRONMENT INITIALIZATION
 load_dotenv()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows requests from Vite (localhost:5173, localhost:5179, etc.)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class SpeakRequest(BaseModel):
+    session_id: str
+    user_text: str
+
+@app.post("/speak")
+async def speak_handler(req: SpeakRequest):
+    if req.session_id not in sessions:
+        sessions[req.session_id] = [
+            {"role": "system", "content": "You are Alex, an expert technical interviewer. Keep responses under 3 sentences."}
+        ]
+
+    # Append user input
+    sessions[req.session_id].append({"role": "user", "content": req.user_text})
+
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=sessions[req.session_id],
+            model="llama-3.3-70b-versatile",
+            temperature=0.7,
+            max_tokens=200,
+        )
+
+        alex_response = chat_completion.choices[0].message.content
+        
+        # Save assistant reply to memory
+        sessions[req.session_id].append({"role": "assistant", "content": alex_response})
+
+        return {"response": alex_response}
+
+    except Exception as e:
+        print(f"Error in /speak: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 # Mount static files so your frontend visualizer, CSS, and images load perfectly
 if os.path.exists(os.path.join(BASE_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")

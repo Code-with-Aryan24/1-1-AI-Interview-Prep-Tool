@@ -1,11 +1,16 @@
-# Environments
-venv/
+# Python ignores
 .env
-
-# Python caching
+venv/
 __pycache__/
 *.pyc
 
-# IDEs
+# Node / Frontend ignores
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+*.log
+
+# System / IDE ignores
 .vscode/
-.idea/
+.DS_Store
