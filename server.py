@@ -1,9 +1,11 @@
 import os
 import re
+import requests
 import json
 import uuid
+import base64
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +14,9 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 # 1. SECURE ENVIRONMENT INITIALIZATION
 load_dotenv()
+
+ 
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI()
@@ -24,20 +29,91 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+sessions = {}
+
+
+class StartRequest(BaseModel):
+    userName: str
+    niche: str
+    vibe: str
+
 
 class SpeakRequest(BaseModel):
-    session_id: str
+    session_id: str = "default_session"
     user_text: str
+
+def generate_elevenlabs_speech(text: str) -> str:
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        print("Warning: ELEVENLABS_API_KEY missing!")
+        return ""
+
+    headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
+
+    # 1. Get voices currently available on your free account
+    try:
+        voices_res = requests.get("https://api.elevenlabs.io/v1/voices", headers=headers)
+        if voices_res.status_code == 200:
+            voices_data = voices_res.json().get("voices", [])
+            # Filter for default premade voices (bypasses 402 library errors)
+            premade_voices = [
+                v for v in voices_data 
+                if v.get("category") == "premade" or v.get("category") == "default"
+            ]
+            
+            if premade_voices:
+                voice_id = premade_voices[0]["voice_id"]
+            elif voices_data:
+                voice_id = voices_data[0]["voice_id"]
+            else:
+                print("No voices found in account.")
+                return ""
+        else:
+            print(f"Error fetching voices: {voices_res.status_code} - {voices_res.text}")
+            return ""
+    except Exception as e:
+        print(f"Failed to fetch voices: {e}")
+        return ""
+
+    # 2. Call Text-To-Speech with the valid voice_id
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    payload = {
+        "text": text,
+        "model_id": "eleven_turbo_v2_5",
+        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        return base64.b64encode(response.content).decode("utf-8")
+    else:
+        print(f"ElevenLabs Error: {response.status_code} - {response.text}")
+        return ""
+
+
+# In server.py:
+class SpeakRequest(BaseModel):
+    session_id: str = "default_session"
+    user_text: str
+
 
 @app.post("/speak")
 async def speak_handler(req: SpeakRequest):
+    # Retrieve user_text safely
+    user_text = req.user_text
+
     if req.session_id not in sessions:
         sessions[req.session_id] = [
-            {"role": "system", "content": "You are Alex, an expert technical interviewer. Keep responses under 3 sentences."}
+            {
+                "role": "system",
+                "content": "You are Alex, an expert technical interviewer. Keep responses under 3 sentences.",
+            }
         ]
 
-    # Append user input
-    sessions[req.session_id].append({"role": "user", "content": req.user_text})
+    sessions[req.session_id].append({"role": "user", "content": user_text})
 
     try:
         chat_completion = client.chat.completions.create(
@@ -48,11 +124,14 @@ async def speak_handler(req: SpeakRequest):
         )
 
         alex_response = chat_completion.choices[0].message.content
-        
-        # Save assistant reply to memory
-        sessions[req.session_id].append({"role": "assistant", "content": alex_response})
+        sessions[req.session_id].append(
+            {"role": "assistant", "content": alex_response}
+        )
 
-        return {"response": alex_response}
+        # Generate audio using ElevenLabs
+        audio_b64 = generate_elevenlabs_speech(alex_response)
+
+        return {"response": alex_response, "audio": audio_b64}
 
     except Exception as e:
         print(f"Error in /speak: {str(e)}")
@@ -63,7 +142,7 @@ if os.path.exists(os.path.join(BASE_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 # Initialize Groq using the secure token hidden inside your .env file
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
 
 # 2. PERSISTENCE LAYER REGISTRY
 # Stores full message arrays by unique session keys to mimic SKYY
