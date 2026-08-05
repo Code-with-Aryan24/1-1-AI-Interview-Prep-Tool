@@ -1,210 +1,153 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from "react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Sparkles } from "lucide-react";
+import HRAvatar from "./HRAvatar";
+import CandidateStream from "./CandidateStream";
 
-export default function InterviewRoom({ candidateName = "Aryan", onEndInterview }) {
-  const [messages, setMessages] = useState([]);
-  const [transcript, setTranscript] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [alexStatus, setAlexStatus] = useState('Idle'); // 'Idle', 'Thinking...', 'Speaking...'
+export default function InterviewRoom({ onEndInterview }) {
+  // State variables for interview settings and controls
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [hrGender, setHrGender] = useState("female"); // "female" | "male"
+  const [aiResponse, setAiResponse] = useState(
+    "Hello! Welcome to your AI technical interview. I'm Sophia, your interviewer today. When you are ready, please give a brief introduction about yourself and your technical background."
+  );
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transcript, setTranscript] = useState("");
 
-  const recognitionRef = useRef(null);
-  const latestTranscriptRef = useRef('');
-
-  // 1. Initial Opening Setup
-  const getInitialGreeting = () => {
-    return `Welcome ${candidateName}. Let's jump straight in. Can you explain how you handle state management and asynchronous data flow in modern applications?`;
-  };
-
-  // 2. Initialize Web Speech API for User Input (Ears)
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-
-      recognition.onresult = (event) => {
-        const current = event.resultIndex;
-        const text = event.results[current][0].transcript;
-        setTranscript(text);
-        latestTranscriptRef.current = text;
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-        // Automatically send response when candidate finishes speaking
-        if (latestTranscriptRef.current.trim() !== '') {
-          handleUserResponse(latestTranscriptRef.current);
-        }
-      };
-
-      recognitionRef.current = recognition;
-    } else {
-      alert("Browser does not support Speech Recognition. Please use Chrome.");
-    }
-
-    // Set initial greeting text on mount
-    const openingMsg = getInitialGreeting();
-    setMessages([{ sender: 'alex', text: openingMsg }]);
-  }, []);
-
-  // 3. Start/Stop Microphone Controls
-  const startListening = () => {
-    if (recognitionRef.current && !isListening) {
-      setTranscript('');
-      latestTranscriptRef.current = '';
-      setIsListening(true);
-      recognitionRef.current.start();
-    }
-  };
-
-  const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-  };
-
-  // 4. Send Response to FastAPI & Play ElevenLabs Audio Stream
-  const handleUserResponse = async (userTranscript) => {
-    if (!userTranscript || userTranscript.trim() === '') return;
-
-    // Append Candidate message to UI
-    setMessages((prev) => [...prev, { sender: 'candidate', text: userTranscript }]);
-    setTranscript('');
-    latestTranscriptRef.current = '';
-    setAlexStatus('Thinking...');
-
-    try {
-      const response = await fetch("http://127.0.0.1:8005/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: "default_session",
-          user_text: userTranscript,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Append Alex response to UI
-        setMessages((prev) => [...prev, { sender: 'alex', text: data.response }]);
-
-        // Play ElevenLabs Neural Voice if audio is returned
-        if (data.audio) {
-          setAlexStatus('Speaking...');
-          const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
-          
-          audio.onended = () => {
-            setAlexStatus('Idle');
-          };
-
-          audio.play().catch((err) => {
-            console.error("Audio playback error:", err);
-            setAlexStatus('Idle');
-          });
-        } else {
-          setAlexStatus('Idle');
-        }
-      } else {
-        console.error("Server returned error:", data);
-        setMessages((prev) => [
-          ...prev,
-          { sender: 'alex', text: "SYSTEM ERROR: Check your Python terminal for Groq API key or FastAPI backend logs." }
-        ]);
-        setAlexStatus('Idle');
-      }
-    } catch (error) {
-      console.error("Backend Connection Error:", error);
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'alex', text: "SYSTEM ERROR: Unable to connect to backend server on port 8005." }
-      ]);
-      setAlexStatus('Idle');
-    }
-  };
+  // Candidate Metrics (updated live via CandidateStream)
+  const [candidateMetrics, setCandidateMetrics] = useState({
+    eyeContact: 85,
+    headPose: "Centered",
+    expression: "Neutral",
+  });
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white p-6 flex flex-col justify-between font-mono">
-      {/* Top Header */}
-      <header className="flex justify-between items-center border-b border-neutral-800 pb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
-          <h1 className="text-xl font-bold tracking-wider">PROJECT // ALEX</h1>
-        </div>
-        <span className="text-xs text-neutral-500 border border-neutral-800 px-2 py-1 rounded">v1.0.0-MVP</span>
-      </header>
-
-      {/* Candidate / Alex Status Row */}
-      <div className="grid grid-cols-2 gap-4 my-4">
-        <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-lg">
-          <span className="text-xs text-neutral-500 block uppercase tracking-wider">Candidate</span>
-          <span className="text-lg font-bold text-cyan-400">{candidateName}</span>
-        </div>
-        <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-lg flex justify-between items-center">
-          <div>
-            <span className="text-xs text-neutral-500 block uppercase tracking-wider">Alex Status</span>
-            <span className="text-lg font-bold text-neutral-200">{alexStatus}</span>
+    <div className="flex flex-col h-screen w-full bg-slate-950 text-slate-100 font-sans overflow-hidden">
+      {/* 1. Header Bar */}
+      <header className="h-16 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/50 backdrop-blur-md z-10">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400">
+            <Sparkles className="w-5 h-5" />
           </div>
-          {onEndInterview && (
-            <button
-              onClick={onEndInterview}
-              className="px-3 py-1 bg-red-950 text-red-400 border border-red-800 rounded hover:bg-red-900 transition-colors text-sm"
-            >
-              End Interview
-            </button>
-          )}
+          <div>
+            <h1 className="text-base font-semibold text-slate-100 leading-tight">
+              AI Technical Interview
+            </h1>
+            <p className="text-xs text-slate-400">Live Session • Local WebGL & Vision Engine</p>
+          </div>
         </div>
-      </div>
 
-      {/* Chat Messages Stream */}
-      <div className="flex-1 overflow-y-auto space-y-4 my-4 pr-2 max-h-[50vh]">
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`flex flex-col ${
-              msg.sender === 'candidate' ? 'items-end' : 'items-start'
-            }`}
-          >
-            <div
-              className={`max-w-2xl p-4 rounded-lg border ${
-                msg.sender === 'candidate'
-                  ? 'bg-cyan-950/40 border-cyan-800/50 text-cyan-200'
-                  : 'bg-neutral-900 border-neutral-800 text-neutral-200'
+        {/* HR Avatar Gender Selector */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center bg-slate-800/80 p-1 rounded-lg border border-slate-700/50 text-xs">
+            <button
+              onClick={() => setHrGender("female")}
+              className={`px-3 py-1 rounded-md transition-all ${
+                hrGender === "female"
+                  ? "bg-indigo-600 text-white font-medium shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <span className="text-xs text-neutral-500 block mb-1 uppercase">
-                {msg.sender === 'candidate' ? candidateName : 'Alex'}
-              </span>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-            </div>
+              Sophia (Female)
+            </button>
+            <button
+              onClick={() => setHrGender("male")}
+              className={`px-3 py-1 rounded-md transition-all ${
+                hrGender === "male"
+                  ? "bg-indigo-600 text-white font-medium shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              Alex (Male)
+            </button>
           </div>
-        ))}
-      </div>
 
-      {/* Mic Controls & Real-time Transcript */}
-      <div className="border-t border-neutral-800 pt-4 space-y-4">
-        <div className="bg-neutral-900 border border-neutral-800 p-3 rounded text-sm min-h-[48px] flex items-center text-neutral-400">
-          {isListening ? (
-            <span className="text-cyan-400 animate-pulse">Listening: {transcript || "..."}</span>
-          ) : (
-            <span>Press microphone button and answer Alex...</span>
-          )}
-        </div>
-
-        <div className="flex justify-center">
           <button
-            onClick={isListening ? stopListening : startListening}
-            className={`w-full max-w-md py-4 rounded-lg font-bold text-lg transition-all flex items-center justify-center gap-2 ${
-              isListening
-                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
-                : 'bg-cyan-500 hover:bg-cyan-400 text-neutral-950'
-            }`}
+            onClick={onEndInterview}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow-md transition-all"
           >
-            🎤 {isListening ? 'STOP SPEAKING' : 'PUSH TO SPEAK'}
+            <PhoneOff className="w-4 h-4" />
+            End Session
           </button>
         </div>
-      </div>
+      </header>
+
+      {/* 2. Main Meeting Grid */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 p-6 min-h-0 overflow-hidden">
+        {/* Left Side: 3D AI HR Avatar */}
+        <div className="h-full w-full relative">
+          <HRAvatar
+            hrGender={hrGender}
+            currentResponse={aiResponse}
+            isProcessing={isProcessing}
+          />
+        </div>
+
+        {/* Right Side: Candidate Stream + Local Face Tracking */}
+        <div className="h-full w-full relative">
+          <CandidateStream
+            isVideoOn={isVideoOn}
+            isMicOn={isMicOn}
+            onMetricsUpdate={setCandidateMetrics}
+            onTranscriptUpdate={setTranscript}
+          />
+        </div>
+      </main>
+
+      {/* 3. Bottom Meeting Control Bar */}
+      <footer className="h-20 border-t border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/60 backdrop-blur-md">
+        {/* Analytics Quick View */}
+        <div className="flex items-center gap-4 text-xs font-mono">
+          <div className="bg-slate-800/60 px-3 py-1.5 rounded-md border border-slate-700/40">
+            <span className="text-slate-400">Eye Contact: </span>
+            <span className={candidateMetrics.eyeContact > 70 ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+              {candidateMetrics.eyeContact}%
+            </span>
+          </div>
+          <div className="bg-slate-800/60 px-3 py-1.5 rounded-md border border-slate-700/40">
+            <span className="text-slate-400">Pose: </span>
+            <span className="text-indigo-300 font-semibold">{candidateMetrics.headPose}</span>
+          </div>
+        </div>
+
+        {/* Media Controls */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsMicOn(!isMicOn)}
+            className={`p-3.5 rounded-full border transition-all ${
+              isMicOn
+                ? "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700"
+                : "bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30"
+            }`}
+            title={isMicOn ? "Mute Microphone" : "Unmute Microphone"}
+          >
+            {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          </button>
+
+          <button
+            onClick={() => setIsVideoOn(!isVideoOn)}
+            className={`p-3.5 rounded-full border transition-all ${
+              isVideoOn
+                ? "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700"
+                : "bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30"
+            }`}
+            title={isVideoOn ? "Turn Camera Off" : "Turn Camera On"}
+          >
+            {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+          </button>
+        </div>
+
+        {/* Live Status Indicator */}
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
+            {isProcessing ? "HR Thinking..." : "Live Connection"}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
